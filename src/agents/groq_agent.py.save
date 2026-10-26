@@ -1,0 +1,240 @@
+source /Users/debarghamishra/Downloads/Agentic_process_Intelligence/.venv/bin/activate
+import os
+from typing import Callable, Dict, Any
+
+from groq import Groq
+
+
+class GroqProcessAgent:
+    """
+    Agentic Process Intelligence agent powered by Groq.
+
+    The model can call:
+    - KPI analysis
+    - Bottleneck analysis
+    - Exception analysis
+    - PR risk analysis
+    - RAG knowledge search
+    """
+
+    def __init__(
+        self,
+        get_kpis: Callable,
+        get_bottlenecks: Callable,
+        get_exceptions: Callable,
+        get_pr_risk: Callable,
+        search_process_knowledge: Callable,
+        model: str = "openai/gpt-oss-120b"
+    ):
+        api_key = os.getenv("GROQ_API_KEY")
+
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY environment variable not found."
+            )
+
+        self.client = Groq(api_key=api_key)
+        self.model = model
+
+        self.tool_registry = {
+            "get_kpis": get_kpis,
+            "get_bottlenecks": get_bottlenecks,
+            "get_exceptions": get_exceptions,
+            "get_pr_risk": get_pr_risk,
+            "search_process_knowledge": search_process_knowledge,
+        }
+
+        self.tool_definitions = self._build_tool_definitions()
+
+    def _build_tool_definitions(self):
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_kpis",
+                    "description": (
+                        "Return overall Purchase-to-Pay process KPIs "
+                        "including PR volume, cycle time, rejection "
+                        "rate and three-way-match metrics."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_bottlenecks",
+                    "description": (
+                        "Return the slowest P2P activity transitions "
+                        "with occurrence counts and duration metrics."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "top_n": {
+                                "type": "integer",
+                                "description": (
+                                    "Number of bottlenecks to return."
+                                ),
+                                "default": 5
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_exceptions",
+                    "description": (
+                        "Return important P2P process exceptions."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_pr_risk",
+                    "description": (
+                        "Return predictive slow-PR risk information "
+                        "for a specific Purchase Requisition."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pr_id": {
+                                "type": "string",
+                                "description": "PR ID such as PR1."
+                            }
+                        },
+                        "required": ["pr_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_process_knowledge",
+                    "description": (
+                        "Search the process-intelligence RAG "
+                        "knowledge base."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {
+                                "type": "string",
+                                "description": (
+                                    "Analytical question to search."
+                                )
+                            }
+                        },
+                        "required": ["question"]
+                    }
+                }
+            }
+        ]
+
+    def _execute_tool(self, tool_call) -> Dict[str, Any]:
+        name = tool_call.function.name
+
+        try:
+            arguments = json.loads(
+                tool_call.function.arguments or "{}"
+            )
+
+            if name not in self.tool_registry:
+                return {
+                    "error": f"Unknown tool: {name}"
+                }
+
+            result = self.tool_registry[name](**arguments)
+
+            return {
+                "result": result
+            }
+
+        except Exception as exc:
+            return {
+                "error": str(exc)
+            }
+
+    def run(
+        self,
+        question: str,
+        max_iterations: int = 5
+    ) -> str:
+
+        messages = [
+            {
+                "role": "system",
+                "content": """
+You are an Agentic Process Intelligence Analyst.
+
+Analyze the Purchase-to-Pay process using the available tools.
+
+Tool selection:
+- Overall performance → get_kpis
+- Bottlenecks/delays → get_bottlenecks
+- Exceptions → get_exceptions
+- Specific PR risk → get_pr_risk
+- Broader evidence search → search_process_knowledge
+
+Rules:
+- Never invent metrics.
+- Treat tool output as the source of truth.
+- Distinguish facts from interpretation.
+- Do not claim causality unless supported.
+- Give concise, business-oriented answers.
+"""
+            },
+            {
+                "role": "user",
+                "content": question
+            }
+        ]
+
+        for _ in range(max_iterations):
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=self.tool_definitions,
+                tool_choice="auto",
+                temperature=0
+            )
+
+            message = response.choices[0].message
+
+            if not message.tool_calls:
+                return message.content
+
+            messages.append(message)
+
+            for tool_call in message.tool_calls:
+
+                result = self._execute_tool(
+                    tool_call
+                )
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": json.dumps(
+                        result,
+                        default=str
+                    )
+                )
+
+        return (
+            "The agent reached its maximum reasoning "
+            "iterations."
+        )
