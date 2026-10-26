@@ -5,11 +5,9 @@ aioitertools
 aiosignal 
 alabaster 
 altair 
-anaconda-anon-usage 
 anaconda-auth 
 anaconda-catalogs 
 anaconda-cli-base 
-anaconda-client 
 anaconda-navigator 
 anaconda-project 
 annotated-doc==0.0.4
@@ -58,10 +56,8 @@ cloudpickle
 colorama 
 colorcet 
 comm 
-conda 
 conda-anaconda-telemetry 
 conda-anaconda-tos 
-conda-build 
 conda-content-trust 
 conda-libmamba-solver 
 conda-pack 
